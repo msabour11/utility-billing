@@ -9,6 +9,7 @@
  "field_order": [
   "naming_series",
   "customer",
+  "utility_property",
   "column_break_qmhh",
   "date",
   "customer_name",
@@ -178,12 +179,18 @@
   {
    "fieldname": "dimension_col_break",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "utility_property",
+   "fieldtype": "Link",
+   "label": "utility property",
+   "options": "Utility Property"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-09 14:45:07.073075",
+ "modified": "2026-03-16 05:46:54.127152",
  "modified_by": "Administrator",
  "module": "Utility Billing",
  "name": "Meter Reading",
