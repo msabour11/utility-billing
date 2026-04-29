@@ -3,6 +3,7 @@ from frappe.query_builder import DocType
 from frappe.utils import today, add_days, date_diff
 from typing import List, Dict, Any, Optional
 
+
 @frappe.whitelist()
 def cancel_auto_repeats_for_property(property_name: str) -> None:
     SalesInvoice = DocType("Sales Invoice")
@@ -14,14 +15,11 @@ def cancel_auto_repeats_for_property(property_name: str) -> None:
         .left_join(SalesInvoiceItem)
         .on(SalesInvoice.name == SalesInvoiceItem.parent)
         .select(SalesInvoice.name)
-        .where(
-            (SalesInvoice.utility_property == property_name)
-            | (SalesInvoiceItem.utility_property == property_name)
-        )
+        .where(SalesInvoiceItem.utility_property == property_name)
         .distinct()
     )
     invoice_names = [row[0] for row in invoice_query.run()]
-    
+
     if not invoice_names:
         return
 
@@ -45,7 +43,11 @@ def cancel_auto_repeats_for_property(property_name: str) -> None:
 def process_penalties_for_overdue_invoices() -> None:
     # No params to check
     try:
-        overdue_invoices = frappe.db.get_list("Sales Invoice", filters={"status": "Overdue"}, fields=["name", "due_date", "posting_date", "customer"])
+        overdue_invoices = frappe.db.get_list(
+            "Sales Invoice",
+            filters={"status": "Overdue"},
+            fields=["name", "due_date", "posting_date", "customer"],
+        )
 
         for invoice in overdue_invoices:
             try:
@@ -55,7 +57,9 @@ def process_penalties_for_overdue_invoices() -> None:
                 if not service_request:
                     continue
 
-                service_request_doc = frappe.get_doc("Utility Service Request", service_request)
+                service_request_doc = frappe.get_doc(
+                    "Utility Service Request", service_request
+                )
                 requested_properties = service_request_doc.get("requested_properties")
 
                 penalty_items = []
@@ -64,13 +68,24 @@ def process_penalties_for_overdue_invoices() -> None:
                     try:
                         utility_property = item.utility_property
 
-                        matching_request = next((req for req in requested_properties if req.utility_property == utility_property), None)
-                        
+                        matching_request = next(
+                            (
+                                req
+                                for req in requested_properties
+                                if req.utility_property == utility_property
+                            ),
+                            None,
+                        )
+
                         if not matching_request or not matching_request.adjustment_rule:
                             continue
 
-                        rule = frappe.get_doc("Billing Adjustment Rule", matching_request.adjustment_rule)
-                        days_overdue = date_diff(today(), invoice["due_date"]) - float(rule.grace_period_days)
+                        rule = frappe.get_doc(
+                            "Billing Adjustment Rule", matching_request.adjustment_rule
+                        )
+                        days_overdue = date_diff(today(), invoice["due_date"]) - float(
+                            rule.grace_period_days
+                        )
                         if days_overdue <= rule.grace_period_days:
                             continue
 
@@ -105,46 +120,50 @@ def process_penalties_for_overdue_invoices() -> None:
                             rate = penalty_amount / qty if qty else penalty_amount
 
                         if penalty_amount > 0:
-                            penalty_items.append({
-                                "item_code": item.item_code,
-                                "description": f"Penalty for overdue invoice {invoice['name']}",
-                                "qty": qty,
-                                "rate": rate,
-                                "amount": penalty_amount,
-                                "income_account": rule.penalty_income_account,
-                                "receivable_account": rule.penalty_receivable_account,
-                                "utility_property": utility_property,
-                            })
-                            
+                            penalty_items.append(
+                                {
+                                    "item_code": item.item_code,
+                                    "description": f"Penalty for overdue invoice {invoice['name']}",
+                                    "qty": qty,
+                                    "rate": rate,
+                                    "amount": penalty_amount,
+                                    "income_account": rule.penalty_income_account,
+                                    "receivable_account": rule.penalty_receivable_account,
+                                    "utility_property": utility_property,
+                                }
+                            )
+
                     except Exception as item_err:
-                        frappe.log_error(f"Error processing item {item.item_code} in invoice {invoice['name']}: {frappe.get_traceback()}")
+                        frappe.log_error(
+                            f"Error processing item {item.item_code} in invoice {invoice['name']}: {frappe.get_traceback()}"
+                        )
                 if penalty_items:
                     try:
-                        create_penalty_invoice(original_invoice, service_request, rule, penalty_items)
+                        create_penalty_invoice(
+                            original_invoice, service_request, rule, penalty_items
+                        )
                     except Exception as create_err:
-                        frappe.log_error(f"Error creating penalty invoice for {invoice['name']}: {frappe.get_traceback()}")
+                        frappe.log_error(
+                            f"Error creating penalty invoice for {invoice['name']}: {frappe.get_traceback()}"
+                        )
 
             except Exception as inv_err:
-                frappe.log_error(f"Error processing invoice {invoice.get('name', '')}: {frappe.get_traceback()}")
+                frappe.log_error(
+                    f"Error processing invoice {invoice.get('name', '')}: {frappe.get_traceback()}"
+                )
 
     except Exception as e:
-        frappe.log_error(f"Error in process_penalties_for_overdue_invoices: {frappe.get_traceback()}")
-        
+        frappe.log_error(
+            f"Error in process_penalties_for_overdue_invoices: {frappe.get_traceback()}"
+        )
+
 
 def get_frequency_days(frequency: str) -> int:
-    return {
-        "Daily": 1,
-        "Weekly": 7,
-        "Monthly": 30,
-        "One-time": 0
-    }.get(frequency, 1)
-    
+    return {"Daily": 1, "Weekly": 7, "Monthly": 30, "One-time": 0}.get(frequency, 1)
+
 
 def create_penalty_invoice(
-    original_invoice: Any,
-    service_request: str,
-    rule: Any,
-    items: List[Dict[str, Any]]
+    original_invoice: Any, service_request: str, rule: Any, items: List[Dict[str, Any]]
 ) -> None:
     try:
         new_total = sum(float(item.get("amount") or 0) for item in items)
@@ -154,7 +173,7 @@ def create_penalty_invoice(
             "Sales Invoice",
             filters={"remarks": penalty_remarks},
             fields=["name", "creation"],
-            order_by="creation desc"
+            order_by="creation desc",
         )
 
         latest_invoice = None
@@ -168,25 +187,34 @@ def create_penalty_invoice(
                     if doc.docstatus == 1:
                         doc.cancel()
                     elif doc.docstatus == 0:
-                        frappe.delete_doc("Sales Invoice", doc.name, ignore_permissions=True)
+                        frappe.delete_doc(
+                            "Sales Invoice", doc.name, ignore_permissions=True
+                        )
                 except Exception:
-                    frappe.log_error(frappe.get_traceback(), f"Failed to cancel/delete penalty invoice {doc.name}")
+                    frappe.log_error(
+                        frappe.get_traceback(),
+                        f"Failed to cancel/delete penalty invoice {doc.name}",
+                    )
 
         if latest_invoice:
             previous_total = sum(float(it.amount or 0) for it in latest_invoice.items)
             if previous_total == new_total:
                 if latest_invoice.docstatus == 0:
-                    latest_invoice.items = []  
+                    latest_invoice.items = []
                     for item in items:
                         latest_invoice.append("items", item)
                     latest_invoice.save(ignore_permissions=True)
-                    frappe.msgprint(f"Penalty Invoice {latest_invoice.name} updated for {original_invoice.name}")
+                    frappe.msgprint(
+                        f"Penalty Invoice {latest_invoice.name} updated for {original_invoice.name}"
+                    )
                 return
             else:
                 if latest_invoice.docstatus == 1:
                     latest_invoice.cancel()
                 else:
-                    frappe.delete_doc("Sales Invoice", latest_invoice.name, ignore_permissions=True)
+                    frappe.delete_doc(
+                        "Sales Invoice", latest_invoice.name, ignore_permissions=True
+                    )
 
         invoice = frappe.new_doc("Sales Invoice")
         invoice.customer = original_invoice.customer
@@ -212,22 +240,34 @@ def create_penalty_invoice(
 
         add_comment("Sales Invoice", original_invoice.name, comment_content)
         if getattr(original_invoice, "utility_service_request", None):
-            add_comment("Utility Service Request", original_invoice.utility_service_request, comment_content)
+            add_comment(
+                "Utility Service Request",
+                original_invoice.utility_service_request,
+                comment_content,
+            )
 
-        frappe.msgprint(f"Penalty Invoice {invoice.name} created for {original_invoice.name}")
+        frappe.msgprint(
+            f"Penalty Invoice {invoice.name} created for {original_invoice.name}"
+        )
 
     except Exception:
-        frappe.log_error(f"Error in create_penalty_invoice for {original_invoice.name}: {frappe.get_traceback()}")
+        frappe.log_error(
+            f"Error in create_penalty_invoice for {original_invoice.name}: {frappe.get_traceback()}"
+        )
 
 
 def add_comment(doctype: str, name: str, content: str) -> None:
     try:
-        frappe.get_doc({
-            "doctype": "Comment",
-            "comment_type": "Info",
-            "reference_doctype": doctype,
-            "reference_name": name,
-            "content": content
-        }).insert(ignore_permissions=True)
+        frappe.get_doc(
+            {
+                "doctype": "Comment",
+                "comment_type": "Info",
+                "reference_doctype": doctype,
+                "reference_name": name,
+                "content": content,
+            }
+        ).insert(ignore_permissions=True)
     except Exception as e:
-        frappe.log_error(f"Error adding comment to {doctype} {name}: {frappe.get_traceback()}")
+        frappe.log_error(
+            f"Error adding comment to {doctype} {name}: {frappe.get_traceback()}"
+        )
