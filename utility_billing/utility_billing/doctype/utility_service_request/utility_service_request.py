@@ -614,9 +614,39 @@ def create_sales_invoice_doc(
         si.append("items", item_dict)
     si.insert()
 
+    _assign_invoice_to_request_items(usr, si.name, items)
     _handle_auto_repeat(si, usr, property_line, enable_auto_repeat, adjustment_rule, final_start_date, final_end_date)
 
     return si.name
+
+
+def _assign_invoice_to_request_items(usr, invoice_name, items):
+    """Link the created Sales Invoice to matching utility service request item rows."""
+    item_counts = {}
+    for item in items:
+        key = (
+            item["item_code"],
+            float(item.get("qty") or 0),
+            float(item.get("rate") or 0),
+        )
+        item_counts[key] = item_counts.get(key, 0) + 1
+
+    for row in usr.items:
+        key = (
+            row.item_code,
+            float(row.qty or 0),
+            float(row.rate or 0),
+        )
+        if item_counts.get(key, 0) > 0:
+            if row.invoice_no != invoice_name:
+                frappe.db.set_value(
+                    "Utility Service Request Item",
+                    row.name,
+                    "invoice_no",
+                    invoice_name,
+                )
+            item_counts[key] -= 1
+
 
 def _validate_items(items):
     if isinstance(items, str):
