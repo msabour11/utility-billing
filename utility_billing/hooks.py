@@ -12,7 +12,11 @@ fixtures = [
             ["name", "in", ["Utility and Rental"]],
             ["parent_item_group", "in", ["Utility and Rental"]],
         ],
-    }
+    },
+    {
+        "dt": "Custom Field",
+        "filters": [["module", "=", "Billing Data"]],
+    },
 ]
 
 accounting_dimension_doctypes = [
